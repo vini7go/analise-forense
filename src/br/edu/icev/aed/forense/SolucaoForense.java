@@ -55,16 +55,6 @@ public class SolucaoForense implements AnaliseForenseAvancada {
 
         return sessoesInvalidas;
     }
-
-    @Override
-    public Map<Long, Long> encontrarPicosTransferencia(String caminhoArquivoCsv) throws IOException {
-        return Collections.emptyMap();
-    }
-
-    @Override
-    public Optional<List<String>> rastrearContaminacao(String caminhoArquivoCsv, String recursoInicial, String recursoAlvo) throws IOException {
-        return Optional.empty();
-    }
     @Override
     public List<String> reconstruirLinhaTempo(String caminhoArquivo, String sessionId) throws IOException {
         Queue<String> filaAcoes = new LinkedList<>();
@@ -128,6 +118,15 @@ public class SolucaoForense implements AnaliseForenseAvancada {
 
         return topAlertas;
     }
+    private static class EventoTransferencia {
+        public final long timestamp;
+        public final long bytes;
+
+        public EventoTransferencia(long timestamp, long bytes) {
+            this.timestamp = timestamp;
+            this.bytes = bytes;
+        }
+    }
     @Override
     public Map<Long, Long> encontrarPicosTransferencia(String caminhoArquivo) throws IOException {
 
@@ -165,5 +164,106 @@ public class SolucaoForense implements AnaliseForenseAvancada {
         }
 
         return picos;
+    }
+    @Override
+    public Optional<List<String>> rastrearContaminacao(String caminhoArquivo, String recursoInicial,
+                                                       String recursoAlvo) throws IOException {
+        Map<String, List<String>> grafo = new HashMap<>();
+        Map<String, List<String>> sessoes = new LinkedHashMap<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
+            String linha = br.readLine();
+
+            while ((linha = br.readLine()) != null) {
+                String[] campos = linha.split(",");
+                if (campos.length < 5) continue;
+
+                String sessionId = campos[2];
+                String targetResource = campos[4];
+
+                sessoes.putIfAbsent(sessionId, new ArrayList<>());
+                sessoes.get(sessionId).add(targetResource);
+            }
+        }
+
+        for (List<String> recursos : sessoes.values()) {
+            for (int i = 0; i < recursos.size() - 1; i++) {
+                String origem = recursos.get(i);
+                String destino = recursos.get(i + 1);
+
+                grafo.putIfAbsent(origem, new ArrayList<>());
+                if (!grafo.get(origem).contains(destino)) {
+                    grafo.get(origem).add(destino);
+                }
+            }
+        }
+
+        if (recursoInicial.equals(recursoAlvo)) {
+            if (grafo.containsKey(recursoInicial) ||
+                    grafo.values().stream().anyMatch(list -> list.contains(recursoAlvo))) {
+                return Optional.of(Collections.singletonList(recursoInicial));
+            }
+            return Optional.empty();
+        }
+
+        return buscaEmLargura(grafo, recursoInicial, recursoAlvo);
+    }
+
+    private Optional<List<String>> buscaEmLargura(Map<String, List<String>> grafo,
+                                                  String inicio, String alvo) {
+        if (!grafo.containsKey(inicio)) {
+            return Optional.empty();
+        }
+
+        Queue<String> fila = new LinkedList<>();
+        Map<String, String> predecessor = new HashMap<>();
+        Set<String> visitados = new HashSet<>();
+
+        fila.offer(inicio);
+        visitados.add(inicio);
+        predecessor.put(inicio, null);
+
+        while (!fila.isEmpty()) {
+            String atual = fila.poll();
+
+            if (atual.equals(alvo)) {
+                return Optional.of(reconstruirCaminho(predecessor, inicio, alvo));
+            }
+
+            List<String> vizinhos = grafo.getOrDefault(atual, Collections.emptyList());
+            for (String vizinho : vizinhos) {
+                if (!visitados.contains(vizinho)) {
+                    visitados.add(vizinho);
+                    predecessor.put(vizinho, atual);
+                    fila.offer(vizinho);
+                }
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private List<String> reconstruirCaminho(Map<String, String> predecessor,
+                                            String inicio, String alvo) {
+        List<String> caminho = new ArrayList<>();
+        String atual = alvo;
+
+        while (atual != null) {
+            caminho.add(atual);
+            atual = predecessor.get(atual);
+        }
+
+        Collections.reverse(caminho);
+        return caminho;
+    }
+
+    private static class Evento {
+        final long timestamp;
+        final long bytes;
+
+        Evento(long timestamp, long bytes) {
+            this.timestamp = timestamp;
+            this.bytes = bytes;
+        }
     }
 }
