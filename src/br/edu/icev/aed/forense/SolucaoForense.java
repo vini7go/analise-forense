@@ -128,5 +128,42 @@ public class SolucaoForense implements AnaliseForenseAvancada {
 
         return topAlertas;
     }
+    @Override
+    public Map<Long, Long> encontrarPicosTransferencia(String caminhoArquivo) throws IOException {
 
+        List<EventoTransferencia> eventos = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
+            String linha = br.readLine();
+
+            while ((linha = br.readLine()) != null) {
+                String[] campos = linha.split(",");
+                if (campos.length < 7) continue;
+
+                long timestamp = Long.parseLong(campos[0]);
+                long bytesTransferred = Long.parseLong(campos[6]);
+
+                eventos.add(new EventoTransferencia(timestamp, bytesTransferred));
+            }
+        }
+
+        Map<Long, Long> picos = new HashMap<>();
+        Stack<EventoTransferencia> pilha = new Stack<>();
+
+        for (int i = eventos.size() - 1; i >= 0; i--) {
+            EventoTransferencia atual = eventos.get(i);
+
+            while (!pilha.isEmpty() && pilha.peek().bytes <= atual.bytes) {
+                pilha.pop();
+            }
+
+            if (!pilha.isEmpty()) {
+                picos.put(atual.timestamp, pilha.peek().timestamp);
+            }
+
+            pilha.push(atual);
+        }
+
+        return picos;
+    }
 }
