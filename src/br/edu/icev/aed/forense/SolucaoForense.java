@@ -333,15 +333,4 @@ public class SolucaoForense implements AnaliseForenseAvancada {
         Collections.reverse(caminho);
         return caminho;
     }
-
-    // Esta classe não interfere nos desafios anteriores — mantive caso o professor espere encontrá-la
-    private static class Evento {
-        final long timestamp;
-        final long bytes;
-
-        Evento(long timestamp, long bytes) {
-            this.timestamp = timestamp;
-            this.bytes = bytes;
-        }
-    }
 }

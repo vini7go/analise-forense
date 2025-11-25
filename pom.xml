@@ -49,7 +49,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>package br.edu.icev.aed.forense;</mainClass>
+                            <mainClass>package br.edu.icev.aed.forense.SolucaoForense</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>
