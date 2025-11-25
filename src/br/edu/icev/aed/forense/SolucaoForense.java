@@ -1,4 +1,4 @@
-package br.edu.icev.aed;
+package br.edu.icev.aed.forense;
 
 import br.edu.icev.aed.forense.AnaliseForenseAvancada;
 import br.edu.icev.aed.forense.Alerta;
@@ -57,17 +57,7 @@ public class SolucaoForense implements AnaliseForenseAvancada {
     }
 
     @Override
-    public List<String> reconstruirLinhaDoTempo(String caminhoArquivoCsv, String sessionId) throws IOException {
-        return Collections.emptyList();
-    }
-
-    @Override
-    public List<Alerta> priorizarAlertas(String caminhoArquivoCsv, int n) throws IOException {
-        return Collections.emptyList();
-    }
-
-    @Override
-    public Map<Long, Long> encontrarPicosDeTransferencia(String caminhoArquivoCsv) throws IOException {
+    public Map<Long, Long> encontrarPicosTransferencia(String caminhoArquivoCsv) throws IOException {
         return Collections.emptyMap();
     }
 
@@ -75,4 +65,68 @@ public class SolucaoForense implements AnaliseForenseAvancada {
     public Optional<List<String>> rastrearContaminacao(String caminhoArquivoCsv, String recursoInicial, String recursoAlvo) throws IOException {
         return Optional.empty();
     }
+    @Override
+    public List<String> reconstruirLinhaTempo(String caminhoArquivo, String sessionId) throws IOException {
+        Queue<String> filaAcoes = new LinkedList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
+            String linha = br.readLine();
+
+            while ((linha = br.readLine()) != null) {
+                String[] campos = linha.split(",");
+                if (campos.length < 4) continue;
+
+                String sessaoAtual = campos[2];
+                String actionType = campos[3];
+
+                if (sessionId.equals(sessaoAtual)) {
+                    filaAcoes.offer(actionType);
+                }
+            }
+        }
+
+        List<String> linhaTempo = new ArrayList<>();
+        while (!filaAcoes.isEmpty()) {
+            linhaTempo.add(filaAcoes.poll());
+        }
+
+        return linhaTempo;
+    }
+
+    @Override
+    public List<Alerta> priorizarAlertas(String caminhoArquivo, int n) throws IOException {
+        PriorityQueue<Alerta> filaPrioridade = new PriorityQueue<>(
+                (a1, a2) -> Integer.compare(a2.getSeverityLevel(), a1.getSeverityLevel())
+        );
+
+        try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
+            String linha = br.readLine();
+
+            while ((linha = br.readLine()) != null) {
+                String[] campos = linha.split(",");
+                if (campos.length < 7) continue;
+
+                long timestamp = Long.parseLong(campos[0]);
+                String userId = campos[1];
+                String sessionId = campos[2];
+                String actionType = campos[3];
+                String targetResource = campos[4];
+                int severityLevel = Integer.parseInt(campos[5]);
+                long bytesTransferred = Long.parseLong(campos[6]);
+
+                Alerta alerta = new Alerta(timestamp, userId, sessionId, actionType,
+                        targetResource, severityLevel, bytesTransferred);
+                filaPrioridade.offer(alerta);
+            }
+        }
+
+        List<Alerta> topAlertas = new ArrayList<>();
+        int count = Math.min(n, filaPrioridade.size());
+        for (int i = 0; i < count; i++) {
+            topAlertas.add(filaPrioridade.poll());
+        }
+
+        return topAlertas;
+    }
+
 }
