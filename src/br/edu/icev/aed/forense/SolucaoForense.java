@@ -12,201 +12,143 @@ public class SolucaoForense implements AnaliseForenseAvancada {
 
     @Override
     public Set<String> encontrarSessoesInvalidas(String caminhoArquivo) throws IOException {
-
-        // Conjunto para guardar as sessões que tiverem algum comportamento inválido
-        Set<String> sessoesInvalidas = new HashSet<>();
-
-        // Para cada usuário, guardo uma pilha de sessões abertas.
-        // Usei pilha porque LOGIN empilha e LOGOUT desempilha — combina com o comportamento LIFO.
-        Map<String, Stack<String>> pilhasPorUsuario = new HashMap<>();
+        Set<String> invalidas = new HashSet<>();
+        Map<String, Deque<String>> pilhas = new HashMap<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
-
-            // Lê a primeira linha (cabeçalho)
             String linha = br.readLine();
 
-            // Percorre todo o arquivo linha por linha
             while ((linha = br.readLine()) != null) {
+                String[] c = linha.split(",");
+                if (c.length < 4) continue;
 
-                // Quebra a linha CSV
-                String[] campos = linha.split(",");
-                if (campos.length < 4) continue;
+                String user = c[1];
+                String sessao = c[2];
+                String acao = c[3];
 
-                String userId = campos[1];
-                String sessionId = campos[2];
-                String actionType = campos[3];
+                pilhas.putIfAbsent(user, new ArrayDeque<>());
+                Deque<String> pilha = pilhas.get(user);
 
-                // Garante que o usuário tenha sua pilha criada
-                pilhasPorUsuario.putIfAbsent(userId, new Stack<>());
-                Stack<String> pilha = pilhasPorUsuario.get(userId);
-
-                // Quando ocorre LOGIN
-                if ("LOGIN".equals(actionType)) {
-
-                    // Se já existe uma sessão aberta, isso significa que o usuário não fechou a anterior corretamente
+                if ("LOGIN".equals(acao)) {
+                    // LOGIN aninhado: sessão atual é inválida
                     if (!pilha.isEmpty()) {
-                        sessoesInvalidas.add(pilha.peek()); // marca a anterior como inválida
-                        pilha.pop(); // remove a sessão antiga
+                        invalidas.add(sessao);
                     }
+                    pilha.push(sessao);
 
-                    // Empilha a nova sessão
-                    pilha.push(sessionId);
-
-                } else if ("LOGOUT".equals(actionType)) {
-
-                    // Se o logout veio fora de ordem, ou não há sessão aberta, já marca como inválida
-                    if (pilha.isEmpty() || !pilha.peek().equals(sessionId)) {
-                        sessoesInvalidas.add(sessionId);
+                } else if ("LOGOUT".equals(acao)) {
+                    // LOGOUT sem sessão ou fora de ordem
+                    if (pilha.isEmpty() || !pilha.peek().equals(sessao)) {
+                        invalidas.add(sessao);
                     } else {
-                        // Caso esteja fechando corretamente, desempilha
                         pilha.pop();
                     }
                 }
             }
         }
 
-        // Se depois do arquivo ainda restarem sessões abertas, elas são inválidas
-        for (Stack<String> pilha : pilhasPorUsuario.values()) {
-            sessoesInvalidas.addAll(pilha);
+        // Sessões que ficaram abertas são inválidas
+        for (Deque<String> p : pilhas.values()) {
+            invalidas.addAll(p);
         }
 
-        return sessoesInvalidas;
+        return invalidas;
     }
 
     @Override
     public List<String> reconstruirLinhaTempo(String caminhoArquivo, String sessionId) throws IOException {
-
-        // Fila para manter a ordem exata das ações da sessão
-        Queue<String> filaAcoes = new LinkedList<>();
+        List<String> timeline = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
-
-            // Ignora o cabeçalho
             String linha = br.readLine();
 
-            // Varre todas as linhas
             while ((linha = br.readLine()) != null) {
-                String[] campos = linha.split(",");
-                if (campos.length < 4) continue;
+                String[] c = linha.split(",");
+                if (c.length < 4) continue;
 
-                String sessaoAtual = campos[2];
-                String actionType = campos[3];
-
-                // Se a linha pertence à sessão desejada, adiciono na fila
-                if (sessionId.equals(sessaoAtual)) {
-                    filaAcoes.offer(actionType);
+                if (sessionId.equals(c[2])) {
+                    timeline.add(c[3]);
                 }
             }
         }
 
-        // Converte a fila para lista respeitando a ordem das ações
-        List<String> linhaTempo = new ArrayList<>();
-        while (!filaAcoes.isEmpty()) {
-            linhaTempo.add(filaAcoes.poll());
-        }
-
-        return linhaTempo;
+        return timeline;
     }
 
     @Override
     public List<Alerta> priorizarAlertas(String caminhoArquivo, int n) throws IOException {
-
-        // Fila de prioridade onde o alerta mais grave fica no topo
-        PriorityQueue<Alerta> filaPrioridade = new PriorityQueue<>(
-                (a1, a2) -> Integer.compare(a2.getSeverityLevel(), a1.getSeverityLevel())
+        PriorityQueue<Alerta> pq = new PriorityQueue<>(
+                (a, b) -> Integer.compare(b.getSeverityLevel(), a.getSeverityLevel())
         );
 
         try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
-
-            // Lê cabeçalho
             String linha = br.readLine();
 
-            // Lê cada alerta no arquivo
             while ((linha = br.readLine()) != null) {
-                String[] campos = linha.split(",");
-                if (campos.length < 7) continue;
+                String[] c = linha.split(",");
+                if (c.length < 7) continue;
 
-                long timestamp = Long.parseLong(campos[0]);
-                String userId = campos[1];
-                String sessionId = campos[2];
-                String actionType = campos[3];
-                String targetResource = campos[4];
-                int severityLevel = Integer.parseInt(campos[5]);
-                long bytesTransferred = Long.parseLong(campos[6]);
+                long ts = Long.parseLong(c[0]);
+                String user = c[1];
+                String sessao = c[2];
+                String acao = c[3];
+                String recurso = c[4];
+                int sev = Integer.parseInt(c[5]);
+                long bytes = Long.parseLong(c[6]);
 
-                // Cria o objeto Alerta e joga na fila
-                Alerta alerta = new Alerta(timestamp, userId, sessionId, actionType,
-                        targetResource, severityLevel, bytesTransferred);
-                filaPrioridade.offer(alerta);
+                pq.offer(new Alerta(ts, user, sessao, acao, recurso, sev, bytes));
             }
         }
 
-        // Pega somente os N mais graves
-        List<Alerta> topAlertas = new ArrayList<>();
-        int count = Math.min(n, filaPrioridade.size());
-        for (int i = 0; i < count; i++) {
-            topAlertas.add(filaPrioridade.poll());
+        List<Alerta> lista = new ArrayList<>();
+        for (int i = 0; i < n && !pq.isEmpty(); i++) {
+            lista.add(pq.poll());
         }
 
-        return topAlertas;
+        return lista;
     }
 
-    // Classe auxiliar usada no desafio de picos — guarda só timestamp e quantidade de bytes
-    private static class EventoTransferencia {
-        public final long timestamp;
-        public final long bytes;
-
-        public EventoTransferencia(long timestamp, long bytes) {
-            this.timestamp = timestamp;
-            this.bytes = bytes;
-        }
+    private static class Evento {
+        long ts;
+        long bytes;
+        Evento(long t, long b) { ts = t; bytes = b; }
     }
 
     @Override
     public Map<Long, Long> encontrarPicosTransferencia(String caminhoArquivo) throws IOException {
-
-        // Lista dos eventos de transferência encontrados no arquivo
-        List<EventoTransferencia> eventos = new ArrayList<>();
+        List<Evento> ev = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
-
-            // Ignora cabeçalho
             String linha = br.readLine();
 
-            // Carrega todos os eventos
             while ((linha = br.readLine()) != null) {
-                String[] campos = linha.split(",");
-                if (campos.length < 7) continue;
+                String[] c = linha.split(",");
+                if (c.length < 7) continue;
 
-                long timestamp = Long.parseLong(campos[0]);
-                long bytesTransferred = Long.parseLong(campos[6]);
-
-                eventos.add(new EventoTransferencia(timestamp, bytesTransferred));
+                ev.add(new Evento(
+                        Long.parseLong(c[0]),
+                        Long.parseLong(c[6])
+                ));
             }
         }
 
-        // Mapa onde cada timestamp aponta para o próximo pico maior
         Map<Long, Long> picos = new HashMap<>();
+        Deque<Evento> pilha = new ArrayDeque<>();
 
-        // Pilha usada para procurar o próximo evento maior (Next Greater Element)
-        Stack<EventoTransferencia> pilha = new Stack<>();
+        // Next Greater Element - percorre de trás pra frente
+        for (int i = ev.size() - 1; i >= 0; i--) {
+            Evento atual = ev.get(i);
 
-        // Percorro a lista de trás para frente justamente porque quero achar o próximo maior à direita
-        for (int i = eventos.size() - 1; i >= 0; i--) {
-
-            EventoTransferencia atual = eventos.get(i);
-
-            // Retira da pilha qualquer evento que não seja maior que o atual
+            // Remove eventos com bytes menores ou iguais
             while (!pilha.isEmpty() && pilha.peek().bytes <= atual.bytes) {
                 pilha.pop();
             }
 
-            // Se sobrou alguém na pilha, ele é o próximo pico maior
+            // Se sobrou algo, é o próximo maior
             if (!pilha.isEmpty()) {
-                picos.put(atual.timestamp, pilha.peek().timestamp);
+                picos.put(atual.ts, pilha.peek().ts);
             }
 
-            // Empilha o evento atual
             pilha.push(atual);
         }
 
@@ -214,122 +156,99 @@ public class SolucaoForense implements AnaliseForenseAvancada {
     }
 
     @Override
-    public Optional<List<String>> rastrearContaminacao(String caminhoArquivo, String recursoInicial,
-                                                       String recursoAlvo) throws IOException {
-
-        // Mapa que vai armazenar o grafo (origem -> destinos)
-        Map<String, List<String>> grafo = new HashMap<>();
-
-        // Aqui armazeno todos os recursos acessados por cada sessão na ordem
+    public Optional<List<String>> rastrearContaminacao(String caminhoArquivo,
+                                                       String inicial,
+                                                       String alvo) throws IOException {
         Map<String, List<String>> sessoes = new LinkedHashMap<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
-
-            // Ignora cabeçalho
             String linha = br.readLine();
 
-            // Lê cada linha do arquivo
             while ((linha = br.readLine()) != null) {
-                String[] campos = linha.split(",");
-                if (campos.length < 5) continue;
+                String[] c = linha.split(",");
+                if (c.length < 5) continue;
 
-                String sessionId = campos[2];
-                String targetResource = campos[4];
-
-                // Adiciona cada acesso na lista da sessão correspondente
-                sessoes.putIfAbsent(sessionId, new ArrayList<>());
-                sessoes.get(sessionId).add(targetResource);
+                sessoes.putIfAbsent(c[2], new ArrayList<>());
+                sessoes.get(c[2]).add(c[4]);
             }
         }
 
-        // Monta o grafo a partir da sequência de acessos das sessões
-        for (List<String> recursos : sessoes.values()) {
+        // Caso especial: origem == destino (verifica ANTES de montar grafo)
+        if (inicial.equals(alvo)) {
+            boolean existe = sessoes.values().stream()
+                    .anyMatch(list -> list.contains(inicial));
 
-            for (int i = 0; i < recursos.size() - 1; i++) {
+            if (existe) {
+                return Optional.of(Collections.singletonList(inicial));
+            }
+            return Optional.empty();
+        }
 
-                String origem = recursos.get(i);
-                String destino = recursos.get(i + 1);
+        // Verifica se recurso inicial existe
+        boolean existe = sessoes.values().stream()
+                .anyMatch(list -> list.contains(inicial));
 
-                grafo.putIfAbsent(origem, new ArrayList<>());
+        if (!existe) {
+            return Optional.empty();
+        }
 
-                // Evita adicionar duplicado
-                if (!grafo.get(origem).contains(destino)) {
-                    grafo.get(origem).add(destino);
+        // Monta o grafo de transições
+        Map<String, List<String>> grafo = new HashMap<>();
+
+        for (List<String> lista : sessoes.values()) {
+            for (int i = 0; i < lista.size() - 1; i++) {
+                String o = lista.get(i);
+                String d = lista.get(i + 1);
+
+                grafo.putIfAbsent(o, new ArrayList<>());
+
+                if (!grafo.get(o).contains(d)) {
+                    grafo.get(o).add(d);
                 }
             }
         }
 
-        // Caso especial: recurso inicial já é o alvo
-        if (recursoInicial.equals(recursoAlvo)) {
-
-            // Só retorna caminho se realmente existir uma ligação no grafo
-            if (grafo.containsKey(recursoInicial) ||
-                    grafo.values().stream().anyMatch(list -> list.contains(recursoAlvo))) {
-
-                return Optional.of(Collections.singletonList(recursoInicial));
-            }
-
-            return Optional.empty();
-        }
-
-        // Caso normal, usa BFS para buscar caminho
-        return buscaEmLargura(grafo, recursoInicial, recursoAlvo);
+        return bfs(grafo, inicial, alvo);
     }
 
-    private Optional<List<String>> buscaEmLargura(Map<String, List<String>> grafo,
-                                                  String inicio, String alvo) {
+    private Optional<List<String>> bfs(Map<String, List<String>> grafo,
+                                       String inicio, String alvo) {
+        Deque<String> fila = new ArrayDeque<>();
+        Map<String, String> pred = new HashMap<>();
+        Set<String> vis = new HashSet<>();
 
-        // Se o recurso inicial não existe no grafo, não há caminho possível
-        if (!grafo.containsKey(inicio)) {
-            return Optional.empty();
-        }
-
-        Queue<String> fila = new LinkedList<>();
-        Map<String, String> predecessor = new HashMap<>();
-        Set<String> visitados = new HashSet<>();
-
-        // Começo a BFS colocando o nó inicial na fila
         fila.offer(inicio);
-        visitados.add(inicio);
-        predecessor.put(inicio, null);
+        vis.add(inicio);
+        pred.put(inicio, null);
 
         while (!fila.isEmpty()) {
-
             String atual = fila.poll();
 
-            // Se cheguei no alvo, é só reconstruir o caminho
             if (atual.equals(alvo)) {
-                return Optional.of(reconstruirCaminho(predecessor, inicio, alvo));
+                return Optional.of(reconstruir(pred, alvo));
             }
 
-            // Percorre todos os vizinhos (próximos recursos acessados)
-            List<String> vizinhos = grafo.getOrDefault(atual, Collections.emptyList());
-
-            for (String vizinho : vizinhos) {
-                if (!visitados.contains(vizinho)) {
-                    visitados.add(vizinho);
-                    predecessor.put(vizinho, atual);
-                    fila.offer(vizinho);
+            for (String v : grafo.getOrDefault(atual, Collections.emptyList())) {
+                if (!vis.contains(v)) {
+                    vis.add(v);
+                    pred.put(v, atual);
+                    fila.offer(v);
                 }
             }
         }
 
-        return Optional.empty(); // nenhum caminho encontrado
+        return Optional.empty();
     }
 
-    private List<String> reconstruirCaminho(Map<String, String> predecessor,
-                                            String inicio, String alvo) {
-
-        // Reconstrói o caminho andando de trás pra frente pelo mapa de predecessores
+    private List<String> reconstruir(Map<String, String> pred, String fim) {
         List<String> caminho = new ArrayList<>();
-        String atual = alvo;
+        String atual = fim;
 
         while (atual != null) {
             caminho.add(atual);
-            atual = predecessor.get(atual);
+            atual = pred.get(atual);
         }
 
-        // Inverte para ficar na ordem correta
         Collections.reverse(caminho);
         return caminho;
     }

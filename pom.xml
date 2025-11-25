@@ -2,6 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>br.edu.icev.aed</groupId>
@@ -21,7 +22,7 @@
     <dependencies>
         <dependency>
             <groupId>br.edu.icev.aed</groupId>
-            <artifactId>analise-forense-aed</artifactId>
+            <artifactId>analise-forense-aed.jar</artifactId>
             <version>1.0</version>
             <scope>system</scope>
             <systemPath>${project.basedir}/lib/analise-forense-aed.jar</systemPath>
@@ -30,7 +31,9 @@
 
     <build>
         <finalName>0030628_0030598</finalName>
+
         <plugins>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -49,14 +52,17 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>package br.edu.icev.aed.forense.SolucaoForense</mainClass>
+                            <mainClass>br.edu.icev.aed.forense.SolucaoForense</mainClass>
                         </manifest>
                     </archive>
+
                     <descriptorRefs>
                         <descriptorRef>jar-with-dependencies</descriptorRef>
                     </descriptorRefs>
+
                     <appendAssemblyId>false</appendAssemblyId>
                 </configuration>
+
                 <executions>
                     <execution>
                         <id>make-assembly</id>
@@ -66,7 +72,10 @@
                         </goals>
                     </execution>
                 </executions>
+
             </plugin>
+
         </plugins>
     </build>
+
 </project>
