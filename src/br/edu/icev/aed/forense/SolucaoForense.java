@@ -126,46 +126,57 @@ public class SolucaoForense implements AnaliseForenseAvancada {
 
     @Override
     public Map<Long, Long> encontrarPicosTransferencia(String caminhoArquivo) throws IOException {
-        List<Evento> ev = new ArrayList<>();
+
+        // Carrega todos os eventos (timestamp, bytes)
+        List<Evento> eventos = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
-            String linha = br.readLine();
+            String linha = br.readLine(); // pular cabeçalho
 
             while ((linha = br.readLine()) != null) {
                 String[] c = linha.split(",");
                 if (c.length < 7) continue;
 
-                ev.add(new Evento(
-                        Long.parseLong(c[0]),
-                        Long.parseLong(c[6])
-                ));
+                long ts = Long.parseLong(c[0]);
+                long bytes = Long.parseLong(c[6]);
+                eventos.add(new Evento(ts, bytes));
             }
         }
 
-        Map<Long, Long> picos = new HashMap<>();
-        // Deque permite operações eficientes nas duas pontas
+        Map<Long, Long> resultado = new HashMap<>();
         Deque<Evento> pilha = new ArrayDeque<>();
 
-        // Algoritmo Next Greater Element clássico
-        // Percorrer de trás pra frente permite identificar próximo maior em O(n)
-        for (int i = ev.size() - 1; i >= 0; i--) {
-            Evento atual = ev.get(i);
+        // Percorre de trás para frente (NGE)
+        for (int i = eventos.size() - 1; i >= 0; i--) {
 
-            // Mantém invariante: pilha sempre em ordem decrescente de bytes
-            while (!pilha.isEmpty() && pilha.peek().bytes <= atual.bytes) {
-                pilha.pop();
+            Evento atual = eventos.get(i);
+
+            // Correção: só mantemos na pilha eventos com
+            // 1) bytes maiores
+            // 2) timestamp MAIOR (inclusive requisito do professor)
+            while (!pilha.isEmpty()) {
+                Evento topo = pilha.peek();
+
+                // Descarta se bytes não são maiores OU timestamp não é maior
+                if (topo.bytes <= atual.bytes || topo.ts <= atual.ts) {
+                    pilha.pop();
+                } else {
+                    break;
+                }
             }
 
-            // Se sobrou algo na pilha, é o primeiro evento subsequente com mais bytes
+            // Se sobrou algo na pilha, é o próximo pico válido
             if (!pilha.isEmpty()) {
-                picos.put(atual.ts, pilha.peek().ts);
+                resultado.put(atual.ts, pilha.peek().ts);
             }
 
+            // Empilha o evento atual
             pilha.push(atual);
         }
 
-        return picos;
+        return resultado;
     }
+
 
     @Override
     public Optional<List<String>> rastrearContaminacao(String caminhoArquivo,
