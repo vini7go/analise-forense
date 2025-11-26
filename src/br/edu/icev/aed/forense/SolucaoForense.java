@@ -102,7 +102,11 @@ public class SolucaoForense implements AnaliseForenseAvancada {
                 String acao = c[3];
                 String recurso = c[4];
                 int sev = Integer.parseInt(c[5]);
-                long bytes = Long.parseLong(c[6]);
+                long bytes = 0;
+                if (c.length > 6 && !c[6].trim().isEmpty()) {
+                    bytes = Long.parseLong(c[6]);
+                }
+
 
                 pq.offer(new Alerta(ts, user, sessao, acao, recurso, sev, bytes));
             }
@@ -126,19 +130,22 @@ public class SolucaoForense implements AnaliseForenseAvancada {
 
     @Override
     public Map<Long, Long> encontrarPicosTransferencia(String caminhoArquivo) throws IOException {
-
-        // Carrega todos os eventos (timestamp, bytes)
         List<Evento> eventos = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
-            String linha = br.readLine(); // pular cabeçalho
+            String linha = br.readLine();
 
             while ((linha = br.readLine()) != null) {
                 String[] c = linha.split(",");
                 if (c.length < 7) continue;
 
                 long ts = Long.parseLong(c[0]);
-                long bytes = Long.parseLong(c[6]);
+
+                long bytes = 0;
+                if (c.length > 6 && !c[6].trim().isEmpty()) {
+                    bytes = Long.parseLong(c[6]);
+                }
+
                 eventos.add(new Evento(ts, bytes));
             }
         }
@@ -146,31 +153,18 @@ public class SolucaoForense implements AnaliseForenseAvancada {
         Map<Long, Long> resultado = new HashMap<>();
         Deque<Evento> pilha = new ArrayDeque<>();
 
-        // Percorre de trás para frente (NGE)
         for (int i = eventos.size() - 1; i >= 0; i--) {
-
             Evento atual = eventos.get(i);
 
-            // Correção: só mantemos na pilha eventos com
-            // 1) bytes maiores
-            // 2) timestamp MAIOR (inclusive requisito do professor)
-            while (!pilha.isEmpty()) {
-                Evento topo = pilha.peek();
-
-                // Descarta se bytes não são maiores OU timestamp não é maior
-                if (topo.bytes <= atual.bytes || topo.ts <= atual.ts) {
-                    pilha.pop();
-                } else {
-                    break;
-                }
+            while (!pilha.isEmpty() && pilha.peek().bytes <= atual.bytes) {
+                pilha.pop();
             }
 
-            // Se sobrou algo na pilha, é o próximo pico válido
+
             if (!pilha.isEmpty()) {
                 resultado.put(atual.ts, pilha.peek().ts);
             }
 
-            // Empilha o evento atual
             pilha.push(atual);
         }
 
