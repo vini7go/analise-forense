@@ -1,4 +1,4 @@
-package br.edu.icev.aed.forense;
+package main.java.br.edu.icev.aed.forense;
 
 import br.edu.icev.aed.forense.AnaliseForenseAvancada;
 import br.edu.icev.aed.forense.Alerta;
